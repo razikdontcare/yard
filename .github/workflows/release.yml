@@ -24,7 +24,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install flet pyinstaller
-          pip install yt-dlp imageio-ffmpeg pyperclip
+          pip install "yt-dlp[default,curl-cffi]" imageio-ffmpeg pyperclip
 
       - name: Build executable
         run: |

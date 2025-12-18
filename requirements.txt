@@ -1,5 +1,4 @@
 flet
-yt-dlp
+yt-dlp[default,curl-cffi]
 imageio-ffmpeg
 pyperclip
-plyer

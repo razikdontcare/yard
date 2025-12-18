@@ -8,7 +8,10 @@ authors = [
     { name = "Razik", email = "razikajee@gmail.com" }
 ]
 dependencies = [
-  "flet==0.28.3"
+  "flet==0.28.3",
+  "yt-dlp[default,curl-cffi]",
+  "imageio-ffmpeg",
+  "pyperclip",
 ]
 
 [tool.flet]
