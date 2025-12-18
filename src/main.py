@@ -5,9 +5,10 @@ import os
 import threading
 import json
 import subprocess
+import glob
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), '.yard_settings.json')
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 def main(page: ft.Page):
     page.title = "Yard"
@@ -112,7 +113,7 @@ def main(page: ft.Page):
         folder = path or state.last_download_path or folder_path.value
         if os.path.exists(folder):
             if os.name == 'nt':  # Windows
-                os.startfile(folder)
+                subprocess.Popen(['explorer', os.path.normpath(folder)])
             else:
                 subprocess.run(['xdg-open', folder])
 
@@ -246,6 +247,12 @@ def main(page: ft.Page):
                 log("Cancelled")
                 set_status("Cancelled", YELLOW)
                 progress.color = YELLOW
+                # Clean up .part files
+                try:
+                    for part_file in glob.glob(os.path.join(path, '*.part')):
+                        os.remove(part_file)
+                except:
+                    pass
             else:
                 log(f"Error: {e}")
                 progress.color = RED
