@@ -43,6 +43,8 @@ jobs:
           flake8 src --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Build with flet
+        env:
+          PYTHONIOENCODING: utf-8
         run: |
           flet build windows -v
 

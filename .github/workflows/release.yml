@@ -33,6 +33,8 @@ jobs:
           pip install "yt-dlp[default,curl-cffi]" imageio-ffmpeg pyperclip requests packaging
 
       - name: Build with flet
+        env:
+          PYTHONIOENCODING: utf-8
         run: |
           flet build windows -v
 
