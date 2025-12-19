@@ -8,7 +8,7 @@ import subprocess
 import glob
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), '.yard_settings.json')
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 
 def main(page: ft.Page):
     page.title = "Yard"
