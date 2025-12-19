@@ -1,0 +1,68 @@
+name: CI - Build and Test
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flet
+          pip install "yt-dlp[default,curl-cffi]" imageio-ffmpeg pyperclip requests packaging
+
+      - name: Lint Python code
+        run: |
+          pip install flake8
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 src --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings
+          flake8 src --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Build with flet
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          flet build windows -v
+
+      - name: Verify build output
+        run: |
+          $buildPath = "build\flutter\build\windows\x64\runner\Release\yard.exe"
+          if (Test-Path $buildPath) {
+            Write-Host "✓ Build successful: yard.exe created"
+            $fileSize = (Get-Item $buildPath).Length / 1MB
+            Write-Host "File size: $([math]::Round($fileSize, 2)) MB"
+          } else {
+            Write-Error "Build failed: yard.exe not found"
+            exit 1
+          }
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yard-windows-build-${{ github.sha }}
+          path: build/flutter/build/windows/x64/runner/Release/
+          retention-days: 7
