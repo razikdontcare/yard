@@ -1,6 +1,6 @@
 [project]
 name = "yard"
-version = "1.0.1"
+version = "1.0.2-beta"
 description = ""
 readme = "README.md"
 requires-python = ">=3.9"
@@ -12,6 +12,8 @@ dependencies = [
   "yt-dlp[default,curl-cffi]",
   "imageio-ffmpeg",
   "pyperclip",
+  "requests",
+  "packaging",
 ]
 
 [tool.flet]

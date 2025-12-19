@@ -6,9 +6,10 @@ import threading
 import json
 import subprocess
 import glob
+from updater import Updater
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), '.yard_settings.json')
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2-beta"
 
 def main(page: ft.Page):
     page.title = "Yard"
@@ -40,6 +41,9 @@ def main(page: ft.Page):
         downloading = False
         queue = []  # Download queue
         last_download_path = None
+        updater = None
+        update_available = False
+        update_version = None
     
     state = State()
 
@@ -349,6 +353,309 @@ def main(page: ft.Page):
             folder_display.value = e.path
             page.update()
 
+    def check_for_updates_ui(e=None):
+        """Check for updates with UI feedback"""
+        def close_dialog(e):
+            page.close(checking_dialog)
+        
+        # Show checking dialog
+        checking_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Checking for Updates", size=16, weight=ft.FontWeight.W_600),
+            content=ft.Container(
+                content=ft.Row([
+                    ft.ProgressRing(width=20, height=20, stroke_width=2),
+                    ft.Text("Checking GitHub for latest version...", size=13),
+                ], spacing=12),
+                padding=ft.padding.symmetric(vertical=10),
+            ),
+        )
+        page.open(checking_dialog)
+        
+        def do_check():
+            updater = Updater(APP_VERSION)
+            update_available, latest_version, release_notes = updater.check_for_updates()
+            
+            page.close(checking_dialog)
+            
+            if update_available:
+                state.updater = updater
+                state.update_available = True
+                state.update_version = latest_version
+                show_update_dialog(latest_version, release_notes)
+            elif latest_version:
+                # Already up to date
+                show_up_to_date_dialog()
+            else:
+                # Error checking
+                show_update_error_dialog()
+        
+        threading.Thread(target=do_check, daemon=True).start()
+    
+    def show_update_dialog(new_version, release_notes):
+        """Show update available dialog"""
+        def close_dialog(e):
+            page.close(update_dialog)
+        
+        def start_update(e):
+            page.close(update_dialog)
+            download_update()
+        
+        update_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.SYSTEM_UPDATE, color=ACCENT, size=24),
+                ft.Text("Update Available", size=16, weight=ft.FontWeight.W_600),
+            ], spacing=8),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Text(f"A new version of Yard is available!", size=13, color=TEXT),
+                    ft.Container(height=8),
+                    ft.Row([
+                        ft.Text(f"Current: {APP_VERSION}", size=12, color=TEXT_SEC),
+                        ft.Icon(ft.Icons.ARROW_FORWARD, size=16, color=TEXT_DIM),
+                        ft.Text(f"Latest: {new_version}", size=12, color=GREEN, weight=ft.FontWeight.BOLD),
+                    ], spacing=8),
+                    ft.Container(height=12),
+                    ft.Text("Release Notes:", size=11, color=TEXT_DIM),
+                    ft.Container(
+                        content=ft.Text(
+                            release_notes[:300] + "..." if len(release_notes) > 300 else release_notes,
+                            size=11,
+                            color=TEXT_SEC,
+                        ),
+                        bgcolor=BG_CONTROL,
+                        border_radius=6,
+                        padding=10,
+                        height=100,
+                    ),
+                ], spacing=4),
+                width=400,
+            ),
+            actions=[
+                ft.TextButton("Not Now", on_click=close_dialog, style=ft.ButtonStyle(color=TEXT_SEC)),
+                ft.ElevatedButton(
+                    "Update Now",
+                    icon=ft.Icons.DOWNLOAD,
+                    bgcolor=ACCENT,
+                    color=TEXT,
+                    on_click=start_update,
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.open(update_dialog)
+    
+    def show_up_to_date_dialog():
+        """Show already up-to-date dialog"""
+        def close_dialog(e):
+            page.close(uptodate_dialog)
+        
+        uptodate_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.CHECK_CIRCLE, color=GREEN, size=24),
+                ft.Text("You're Up to Date", size=16, weight=ft.FontWeight.W_600),
+            ], spacing=8),
+            content=ft.Text(f"You have the latest version ({APP_VERSION})", size=13),
+            actions=[
+                ft.TextButton("OK", on_click=close_dialog, style=ft.ButtonStyle(color=ACCENT)),
+            ],
+        )
+        page.open(uptodate_dialog)
+    
+    def show_update_error_dialog():
+        """Show update check error dialog"""
+        def close_dialog(e):
+            page.close(error_dialog)
+        
+        error_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.ERROR_OUTLINE, color=RED, size=24),
+                ft.Text("Update Check Failed", size=16, weight=ft.FontWeight.W_600),
+            ], spacing=8),
+            content=ft.Text("Could not connect to update server. Please check your internet connection.", size=13),
+            actions=[
+                ft.TextButton("OK", on_click=close_dialog, style=ft.ButtonStyle(color=ACCENT)),
+            ],
+        )
+        page.open(error_dialog)
+    
+    def download_update():
+        """Download update with progress dialog"""
+        progress_bar = ft.ProgressBar(value=0, color=ACCENT, bgcolor=BG_CONTROL, height=8)
+        progress_text = ft.Text("Starting download...", size=13, color=TEXT_SEC)
+        speed_text = ft.Text("", size=11, color=TEXT_DIM)
+        
+        def close_dialog(e):
+            page.close(download_dialog)
+        
+        download_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Downloading Update", size=16, weight=ft.FontWeight.W_600),
+            content=ft.Container(
+                content=ft.Column([
+                    progress_bar,
+                    ft.Container(height=8),
+                    progress_text,
+                    speed_text,
+                ], spacing=4),
+                width=400,
+            ),
+            actions=[
+                ft.TextButton("Cancel", on_click=close_dialog, style=ft.ButtonStyle(color=TEXT_SEC)),
+            ],
+        )
+        page.open(download_dialog)
+        
+        def progress_callback(downloaded, total, speed):
+            if total > 0:
+                progress_bar.value = downloaded / total
+                percent = (downloaded / total) * 100
+                progress_text.value = f"{percent:.1f}% · {downloaded / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB"
+                if speed > 0:
+                    speed_text.value = f"Speed: {speed:.2f} MB/s"
+            page.update()
+        
+        def do_download():
+            downloaded_file = state.updater.download_update(progress_callback)
+            
+            if downloaded_file:
+                page.close(download_dialog)
+                show_install_dialog(downloaded_file)
+            else:
+                page.close(download_dialog)
+                show_download_error_dialog()
+        
+        threading.Thread(target=do_download, daemon=True).start()
+    
+    def show_download_error_dialog():
+        """Show download error dialog"""
+        def close_dialog(e):
+            page.close(error_dialog)
+        
+        error_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.ERROR_OUTLINE, color=RED, size=24),
+                ft.Text("Download Failed", size=16, weight=ft.FontWeight.W_600),
+            ], spacing=8),
+            content=ft.Text("Failed to download the update. Please try again later.", size=13),
+            actions=[
+                ft.TextButton("OK", on_click=close_dialog, style=ft.ButtonStyle(color=ACCENT)),
+            ],
+        )
+        page.open(error_dialog)
+    
+    def show_install_dialog(downloaded_file):
+        """Show install confirmation dialog"""
+        # Check if running in development mode
+        import sys
+        if not getattr(sys, 'frozen', False):
+            show_dev_mode_dialog(downloaded_file)
+            return
+        
+        def close_dialog(e):
+            page.close(install_dialog)
+        
+        def install_now(e):
+            page.close(install_dialog)
+            if state.updater.install_update(downloaded_file):
+                # App will restart automatically
+                page.window.close()
+            else:
+                show_install_error_dialog()
+        
+        install_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.CHECK_CIRCLE, color=GREEN, size=24),
+                ft.Text("Ready to Install", size=16, weight=ft.FontWeight.W_600),
+            ], spacing=8),
+            content=ft.Column([
+                ft.Text("The update has been downloaded successfully.", size=13),
+                ft.Container(height=4),
+                ft.Text("Yard will close and install the update.", size=13, color=TEXT_SEC),
+                ft.Container(height=4),
+                ft.Text("Please launch Yard again after the updater completes.", size=11, color=TEXT_DIM),
+                ft.Container(height=4),
+                ft.Text("Your settings will be preserved.", size=11, color=TEXT_DIM),
+            ], spacing=0),
+            actions=[
+                ft.TextButton("Install Later", on_click=close_dialog, style=ft.ButtonStyle(color=TEXT_SEC)),
+                ft.ElevatedButton(
+                    "Install Update",
+                    icon=ft.Icons.REFRESH,
+                    bgcolor=GREEN,
+                    color=TEXT,
+                    on_click=install_now,
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.open(install_dialog)
+    
+    def show_dev_mode_dialog(downloaded_file):
+        """Show development mode warning dialog"""
+        def close_dialog(e):
+            page.close(dev_dialog)
+            # Clean up downloaded file
+            try:
+                if os.path.exists(downloaded_file):
+                    os.remove(downloaded_file)
+            except:
+                pass
+        
+        def open_downloads(e):
+            import subprocess
+            folder = os.path.dirname(downloaded_file)
+            if os.path.exists(folder):
+                subprocess.Popen(['explorer', os.path.normpath(folder)])
+        
+        dev_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.INFO_OUTLINE, color=YELLOW, size=24),
+                ft.Text("Development Mode", size=16, weight=ft.FontWeight.W_600),
+            ], spacing=8),
+            content=ft.Column([
+                ft.Text("You're running Yard in development mode.", size=13),
+                ft.Container(height=4),
+                ft.Text("Auto-update only works with the compiled executable (.exe).", size=13, color=TEXT_SEC),
+                ft.Container(height=8),
+                ft.Text("To test the updater:", size=12, color=TEXT_DIM),
+                ft.Text("1. Build the app: flet pack src/main.py --name yard", size=11, color=TEXT_DIM),
+                ft.Text("2. Run the compiled executable from dist/ folder", size=11, color=TEXT_DIM),
+                ft.Container(height=8),
+                ft.Text(f"Update downloaded to: {os.path.basename(downloaded_file)}", size=10, color=TEXT_DIM),
+            ], spacing=0),
+            actions=[
+                ft.TextButton("Open Downloads Folder", on_click=open_downloads, style=ft.ButtonStyle(color=ACCENT)),
+                ft.TextButton("OK", on_click=close_dialog, style=ft.ButtonStyle(color=TEXT_SEC)),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.open(dev_dialog)
+    
+    def show_install_error_dialog():
+        """Show installation error dialog"""
+        def close_dialog(e):
+            page.close(error_dialog)
+        
+        error_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.ERROR_OUTLINE, color=RED, size=24),
+                ft.Text("Installation Failed", size=16, weight=ft.FontWeight.W_600),
+            ], spacing=8),
+            content=ft.Text("Failed to install the update. Please try downloading again.", size=13),
+            actions=[
+                ft.TextButton("OK", on_click=close_dialog, style=ft.ButtonStyle(color=ACCENT)),
+            ],
+        )
+        page.open(error_dialog)
+    
     def show_about(e):
         """Show about dialog"""
         def close_sheet(e):
@@ -398,6 +705,16 @@ def main(page: ft.Page):
                             expand=True,
                         ),
                     ], spacing=8),
+                    ft.Container(height=8),
+                    # Check for Updates button
+                    ft.ElevatedButton(
+                        "Check for Updates",
+                        icon=ft.Icons.SYSTEM_UPDATE,
+                        bgcolor=ACCENT,
+                        color=TEXT,
+                        width=200,
+                        on_click=check_for_updates_ui,
+                    ),
                     ft.Container(height=8),
                     ft.Text("© 2025 Yard", size=9, color=TEXT_DIM),
                 ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
@@ -642,6 +959,24 @@ def main(page: ft.Page):
             page.update()
     except:
         pass
+    
+    # Auto-check for updates on startup (non-blocking)
+    def check_updates_startup():
+        import time
+        time.sleep(2)  # Wait 2 seconds after startup
+        updater = Updater(APP_VERSION)
+        update_available, latest_version, release_notes = updater.check_for_updates()
+        
+        if update_available:
+            state.updater = updater
+            state.update_available = True
+            state.update_version = latest_version
+            # Show subtle notification
+            def show_notification_ui():
+                show_update_dialog(latest_version, release_notes)
+            page.run_task(show_notification_ui)
+    
+    threading.Thread(target=check_updates_startup, daemon=True).start()
 
 if __name__ == "__main__":
     ft.app(target=main)

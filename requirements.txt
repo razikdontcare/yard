@@ -1,4 +1,6 @@
-flet
+flet==0.28.3
 yt-dlp[default,curl-cffi]
 imageio-ffmpeg
 pyperclip
+requests
+packaging
