@@ -2,7 +2,7 @@
 ; This script creates an installer for the Yard YouTube Downloader
 
 #define MyAppName "Yard"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "Razik"
 #define MyAppURL "https://github.com/razikdontcare/yard"
 #define MyAppExeName "yard.exe"
