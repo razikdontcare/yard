@@ -165,3 +165,8 @@ storage/
 installer/
 
 .yard_settings.json
+.yard.lock
+.yard_queue.json
+
+# Deno runtime (downloaded during setup)
+src/bin/

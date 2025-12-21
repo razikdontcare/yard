@@ -38,10 +38,40 @@ def main(page: ft.Page):
         is_cancelled = False
         current_filename = None
         downloading = False
-        queue = []  # Download queue
+        queue = []  # Queue items: [{'url': str, 'settings': dict}, ...]
         last_download_path = None
     
     state = State()
+
+    # --- Queue Persistence ---
+    QUEUE_FILE = os.path.join(os.path.dirname(__file__), '.yard_queue.json')
+    
+    def save_queue():
+        """Save queue to disk"""
+        try:
+            with open(QUEUE_FILE, 'w') as f:
+                json.dump(state.queue, f)
+        except:
+            pass
+    
+    def load_queue():
+        """Load queue from disk"""
+        try:
+            if os.path.exists(QUEUE_FILE):
+                with open(QUEUE_FILE, 'r') as f:
+                    state.queue = json.load(f)
+                    return True
+        except:
+            pass
+        return False
+    
+    def clear_queue_file():
+        """Remove queue file"""
+        try:
+            if os.path.exists(QUEUE_FILE):
+                os.remove(QUEUE_FILE)
+        except:
+            pass
 
     # --- Settings Persistence ---
     def load_settings():
@@ -127,13 +157,21 @@ def main(page: ft.Page):
         
         # Update queue list
         queue_list.controls.clear()
-        for i, url in enumerate(state.queue):
+        for i, item in enumerate(state.queue):
+            url = item['url'] if isinstance(item, dict) else item
+            settings = item.get('settings', {}) if isinstance(item, dict) else {}
+            
             # Truncate URL for display
-            display_url = url[:45] + "..." if len(url) > 48 else url
+            display_url = url[:40] + "..." if len(url) > 43 else url
+            
+            # Format indicator (🎵 audio, 🎬 video)
+            format_icon = "🎵" if settings.get('audio') else "🎬"
+            
             queue_list.controls.append(
                 ft.Container(
                     content=ft.Row([
                         ft.Text(f"{i+1}.", size=11, color=TEXT_DIM, width=20),
+                        ft.Text(format_icon, size=11, width=20),
                         ft.Text(display_url, size=11, color=TEXT_SEC, expand=True),
                         ft.IconButton(
                             icon=ft.Icons.CLOSE,
@@ -154,12 +192,14 @@ def main(page: ft.Page):
         """Remove item from queue by index"""
         if 0 <= index < len(state.queue):
             state.queue.pop(index)
+            save_queue()  # Persist changes
             update_queue_display()
             set_status(f"Removed from queue ({len(state.queue)} remaining)", TEXT_SEC)
 
     def clear_queue(e):
         """Clear all items from queue"""
         state.queue.clear()
+        clear_queue_file()  # Remove persistence file
         update_queue_display()
         set_status("Queue cleared", TEXT_SEC)
 
@@ -251,11 +291,12 @@ def main(page: ft.Page):
                         'key': 'FFmpegVideoConvertor',
                         'preferedformat': fmt.lower(),
                     }]
-                    # Note: vsync cfr converts VFR->CFR while preserving original framerate
+                    # FFmpeg args optimized for speed while maintaining good quality
+                    # veryfast preset + CRF 23 = ~3x faster than medium preset + CRF 18
                     opts['postprocessor_args'] = [
-                        '-c:v', 'libx264',           # H.264 codec
-                        '-preset', 'medium',          # Encoding speed/quality balance
-                        '-crf', '18',                 # High quality
+                        '-c:v', 'libx264',            # H.264 codec
+                        '-preset', 'veryfast',        # Fast encoding
+                        '-crf', '23',                 # Good quality/speed balance
                         '-vsync', 'cfr',              # Convert to constant framerate
                         '-c:a', 'aac',                # AAC audio codec
                         '-b:a', '192k',               # Audio bitrate
@@ -264,12 +305,83 @@ def main(page: ft.Page):
                 else:
                     log("Using original format (may contain variable framerate)")
 
-            deno = os.path.join(os.getcwd(), 'src', 'bin', 'deno.exe')
+            deno = os.path.join(os.getcwd(), 'src', 'bin', 'deno.exe'
+)
+            deno_config = {}
             if os.path.exists(deno):
                 subprocess.run([deno, '--version'], capture_output=True, check=False)
-                opts['js_runtimes'] = {'deno': {'args': [deno]}}
+                deno_config = {'js_runtimes': {'deno': {'args': [deno]}}}
+                log("Deno JS runtime configured")
+            else:
+                log(f"⚠ Deno not found at: {deno}")
+
+            log("Fetching video info...")
+            set_status("Validating video...", TEXT_SEC)
+            
+            try:
+                # Configure info fetch with Deno runtime
+                info_opts = {'quiet': True, 'no_warnings': True, **deno_config}
+                with yt_dlp.YoutubeDL(info_opts) as ydl_info:
+                    info = ydl_info.extract_info(url, download=False)
+            except Exception as e:
+                log(f"⚠ Failed to fetch video info: {e}")
+                raise
+            
+            # LIVESTREAM DETECTION
+            if info.get('is_live'):
+                log("⚠ WARNING: This is a LIVE stream!")
+                log("  Download will continue until you cancel it.")
+                set_status("Live stream detected - download until cancel", YELLOW)
+                page.update()
+            
+            # LONG VIDEO WARNING
+            duration = info.get('duration', 0)
+            if duration > 10800:  # 3 hours
+                hours = duration / 3600
+                log(f"⚠ WARNING: Very long video ({hours:.1f} hours)")
+                log("  This may take significant time to process.")
+                if compat:
+                    log("  Tip: Disable compatibility mode for faster processing")
+            
+            # QUALITY FALLBACK
+            if not audio:
+                formats = info.get('formats', [])
+                available_heights = sorted(set(f.get('height') for f in formats if f.get('height')), reverse=True)
+                
+                if quality != "Best" and available_heights:
+                    requested_h = int(quality.replace('p', ''))
+                    if requested_h not in available_heights:
+                        # Find next best quality
+                        fallback = min([h for h in available_heights if h], key=lambda x: abs(x - requested_h))
+                        log(f"⚠ {quality} not available")
+                        log(f"  Using {fallback}p instead")
+                        # Update format string
+                        h = fallback
+                        fstr = f'bestvideo[height<={h}]+bestaudio[ext=m4a]/bestvideo[height<={h}]+bestaudio/best[height<={h}]'
+            
+            # DISK SPACE VALIDATION
+            try:
+                import shutil
+                filesize = info.get('filesize') or info.get('filesize_approx', 0)
+                if filesize:
+                    filesize_gb = filesize / (1024**3)
+                    free_space = shutil.disk_usage(path).free / (1024**3)
+                    
+                    if free_space < filesize_gb + 1:  # Need at least file size + 1GB buffer
+                        log(f"⚠ WARNING: Low disk space!")
+                        log(f"  Required: ~{filesize_gb:.1f} GB")
+                        log(f"  Available: {free_space:.1f} GB")
+                        if free_space < filesize_gb:
+                            raise Exception(f"Insufficient disk space ({free_space:.1f}GB available, {filesize_gb:.1f}GB needed)")
+            except Exception as e:
+                if "Insufficient disk space" in str(e):
+                    raise
+                # Ignore other disk check errors
+                pass
 
             log("Downloading...")
+            # Merge deno config into download opts
+            opts.update(deno_config)
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 title = info.get('title', 'video')
@@ -305,15 +417,33 @@ def main(page: ft.Page):
         
         # Process queue
         if state.queue:
-            next_url = state.queue.pop(0)
+            next_item = state.queue.pop(0)
+            save_queue()  # Save queue after removal
             update_queue_display()
-            url_input.value = next_url
+            
+            # Extract URL and settings from queue item
+            if isinstance(next_item, dict):
+                url_input.value = next_item['url']
+                settings = next_item.get('settings', {})
+                # Apply saved settings
+                audio_cb.value = settings.get('audio', False)
+                quality_dd.value = settings.get('quality', 'Best')
+                format_dd.value = settings.get('format', 'MP4' if not settings.get('audio') else 'MP3')
+                playlist_cb.value = settings.get('playlist', False)
+                compat_cb.value = settings.get('compat', True)
+                if settings.get('folder'):
+                    folder_path.value = settings['folder']
+            else:
+                # Backward compatibility with old queue format
+                url_input.value = next_item
+            
             page.update()
             start_download()
         else:
             dl_btn.text = "Download"
             dl_btn.icon = ft.Icons.DOWNLOAD
             dl_btn.bgcolor = ACCENT
+            clear_queue_file()  # Clean up when queue is empty
             page.update()
 
     def start_download():
@@ -335,6 +465,9 @@ def main(page: ft.Page):
         dl_btn.text = "Cancel"
         dl_btn.icon = ft.Icons.CLOSE
         dl_btn.bgcolor = RED
+        
+        # Clear input to allow adding new URLs to queue during download
+        url_input.value = ""
         page.update()
         
         threading.Thread(
@@ -364,10 +497,32 @@ def main(page: ft.Page):
             pass
 
     def on_add_to_queue(e):
-        """Add current URL to queue"""
+        """Add current URL to queue with duplicate detection and settings"""
         url = url_input.value.strip()
         if url and url.startswith('http'):
-            state.queue.append(url)
+            # DUPLICATE URL DETECTION
+            existing_urls = [item['url'] if isinstance(item, dict) else item for item in state.queue]
+            if url in existing_urls:
+                log("⚠ Duplicate URL - Already in queue")
+                set_status("Duplicate URL detected", YELLOW)
+                page.update()
+                return
+            
+            # MIXED FORMAT QUEUE - Store settings per item
+            queue_item = {
+                'url': url,
+                'settings': {
+                    'audio': audio_cb.value,
+                    'quality': quality_dd.value,
+                    'format': format_dd.value,
+                    'playlist': playlist_cb.value,
+                    'compat': compat_cb.value,
+                    'folder': folder_path.value
+                }
+            }
+            
+            state.queue.append(queue_item)
+            save_queue()  # Persist to disk
             update_queue_display()
             url_input.value = ""
             set_status(f"Added to queue ({len(state.queue)} pending)", ACCENT)
@@ -680,6 +835,72 @@ def main(page: ft.Page):
     if saved:
         apply_settings(saved)
         page.update()
+
+    LOCK_FILE = os.path.join(os.path.dirname(__file__), '.yard.lock')
+    
+    def acquire_lock():
+        """Create lock file with current PID"""
+        try:
+            # Check if lock exists
+            if os.path.exists(LOCK_FILE):
+                try:
+                    with open(LOCK_FILE, 'r') as f:
+                        old_pid = int(f.read().strip())
+                    
+                    # Check if process is still running (Windows)
+                    import psutil
+                    if psutil.pid_exists(old_pid):
+                        log("⚠ Another instance of Yard is already running")
+                        set_status("Warning: Multiple instances detected", YELLOW)
+                        page.update()
+                        return False
+                    else:
+                        # Old process is dead, remove stale lock
+                        os.remove(LOCK_FILE)
+                except:
+                    # Can't read lock file, remove it
+                    try:
+                        os.remove(LOCK_FILE)
+                    except:
+                        pass
+            
+            # Create new lock
+            with open(LOCK_FILE, 'w') as f:
+                f.write(str(os.getpid()))
+            return True
+        except:
+            # Couldn't create lock, but continue anyway
+            return True
+    
+    def release_lock():
+        """Remove lock file"""
+        try:
+            if os.path.exists(LOCK_FILE):
+                os.remove(LOCK_FILE)
+        except:
+            pass
+    
+    def on_window_close(e):
+        """Cleanup on exit - synchronous only to avoid executor errors"""
+        try:
+            release_lock()
+            # Only clear queue file if queue is empty
+            if not state.queue:
+                clear_queue_file()
+        except:
+            # Suppress any errors during shutdown
+            pass
+    
+    page.on_disconnect = on_window_close
+    
+    # Acquire lock
+    acquire_lock()
+    
+    # Load persisted queue
+    if load_queue():
+        update_queue_display()
+        if state.queue:
+            log(f"📋 Restored {len(state.queue)} queued items")
 
     # Auto-paste on startup
     try:
