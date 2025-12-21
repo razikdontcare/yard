@@ -2,3 +2,5 @@ flet
 yt-dlp[default,curl-cffi]
 imageio-ffmpeg
 pyperclip
+psutil
+packaging

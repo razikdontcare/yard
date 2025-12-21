@@ -163,3 +163,11 @@ cython_debug/
 storage/
 
 installer/
+
+.yard_settings.json
+.yard.lock
+.yard_queue.json
+.yard_update_check.json
+
+# Deno runtime (downloaded during setup)
+src/bin/
