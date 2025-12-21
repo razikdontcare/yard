@@ -14,7 +14,7 @@ def main(page: ft.Page):
     page.title = "Yard"
     page.theme_mode = ft.ThemeMode.DARK
     page.window.width = 800
-    page.window.height = 600
+    page.window.height = 680
     page.window.resizable = False
     page.window.maximizable = False
     page.padding = 0
