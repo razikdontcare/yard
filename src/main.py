@@ -305,8 +305,7 @@ def main(page: ft.Page):
                 else:
                     log("Using original format (may contain variable framerate)")
 
-            deno = os.path.join(os.getcwd(), 'src', 'bin', 'deno.exe'
-)
+            deno = os.path.join(os.getcwd(), 'src', 'bin', 'deno.exe')
             deno_config = {}
             if os.path.exists(deno):
                 subprocess.run([deno, '--version'], capture_output=True, check=False)
