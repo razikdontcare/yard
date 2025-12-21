@@ -829,6 +829,74 @@ def main(page: ft.Page):
         ], expand=True, spacing=0)
     )
 
+    # ==================== UPDATE CHECKER ====================
+    UPDATE_CHECK_FILE = os.path.join(os.path.dirname(__file__), '.yard_update_check.json')
+    
+    def check_for_updates():
+        """Check GitHub for new version"""
+        try:
+            import urllib.request
+            import urllib.error
+            from packaging import version
+            
+            # Check cache (don't check more than once per day)
+            if os.path.exists(UPDATE_CHECK_FILE):
+                try:
+                    with open(UPDATE_CHECK_FILE, 'r') as f:
+                        cache = json.load(f)
+                        import time
+                        if time.time() - cache.get('last_check', 0) < 86400:  # 24 hours
+                            return  # Skip check
+                except:
+                    pass
+            
+            # Query GitHub API
+            url = "https://api.github.com/repos/razikdontcare/yard/releases/latest"
+            req = urllib.request.Request(url)
+            req.add_header('User-Agent', 'Yard-UpdateChecker')
+            
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read())
+                latest_version = data['tag_name'].lstrip('v')
+                download_url = data['html_url']
+                
+                # Save cache
+                import time
+                with open(UPDATE_CHECK_FILE, 'w') as f:
+                    json.dump({'last_check': time.time(), 'latest': latest_version}, f)
+                
+                # Compare versions
+                if version.parse(latest_version) > version.parse(APP_VERSION):
+                    # Show update notification banner
+                    def open_release_page(e):
+                        import webbrowser
+                        webbrowser.open(download_url)
+                    
+                    update_banner = ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.UPDATE, color=ACCENT, size=20),
+                            ft.Text(f"New version {latest_version} available!", size=13, color=TEXT, weight=ft.FontWeight.W_500),
+                            ft.TextButton(
+                                "Download Update",
+                                on_click=open_release_page,
+                                style=ft.ButtonStyle(color=ACCENT)
+                            ),
+                        ], spacing=12, alignment=ft.MainAxisAlignment.CENTER),
+                        bgcolor=BG_SUBTLE,
+                        padding=8,
+                        border=ft.border.only(bottom=ft.border.BorderSide(1, BORDER)),
+                    )
+                    
+                    page.controls.insert(0, update_banner)
+                    page.update()
+                    log(f"✨ Update available: v{latest_version}")
+        except Exception as e:
+            # Silently fail - don't bother user with update check errors
+            pass
+    
+    # Run update check in background
+    threading.Thread(target=check_for_updates, daemon=True).start()
+
     # Load saved settings
     saved = load_settings()
     if saved:

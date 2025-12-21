@@ -29,8 +29,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flet
-          pip install "yt-dlp[default,curl-cffi]" imageio-ffmpeg pyperclip psutil
+          pip install -r requirements.txt
 
       - name: Download and setup Deno
         run: |
