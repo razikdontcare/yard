@@ -31,8 +31,18 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flet
-          pip install "yt-dlp[default,curl-cffi]" imageio-ffmpeg pyperclip requests packaging
+          pip install -r requirements.txt
+
+      - name: Download and setup Deno
+        run: |
+          $DENO_URL = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
+          $BIN_DIR = "src\bin"
+          New-Item -ItemType Directory -Path $BIN_DIR -Force | Out-Null
+          Invoke-WebRequest -Uri $DENO_URL -OutFile "$BIN_DIR\deno.zip" -UseBasicParsing
+          Expand-Archive -Path "$BIN_DIR\deno.zip" -DestinationPath $BIN_DIR -Force
+          Remove-Item "$BIN_DIR\deno.zip" -Force
+          Write-Host "Deno installed:"
+          & "$BIN_DIR\deno.exe" --version
 
       - name: Lint Python code
         run: |
