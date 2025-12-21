@@ -56,7 +56,7 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          flet build windows -v
+          flet build windows -v --no-rich-output
 
       - name: Verify build output
         run: |
