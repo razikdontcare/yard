@@ -163,3 +163,5 @@ cython_debug/
 storage/
 
 installer/
+
+.yard_settings.json

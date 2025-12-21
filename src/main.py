@@ -8,7 +8,7 @@ import subprocess
 import glob
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), '.yard_settings.json')
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 def main(page: ft.Page):
     page.title = "Yard"
@@ -57,6 +57,7 @@ def main(page: ft.Page):
         settings = {
             'audio_only': audio_cb.value,
             'playlist': playlist_cb.value,
+            'compat': compat_cb.value,
             'quality': quality_dd.value,
             'format': format_dd.value,
             'folder': folder_path.value,
@@ -77,6 +78,8 @@ def main(page: ft.Page):
             format_dd.value = settings.get('format', 'MP4')
         if settings.get('playlist'):
             playlist_cb.value = True
+        if settings.get('compat') is not None:
+            compat_cb.value = settings.get('compat', True)
         if settings.get('quality'):
             quality_dd.value = settings.get('quality')
         if settings.get('folder') and os.path.exists(settings.get('folder')):
@@ -184,10 +187,29 @@ def main(page: ft.Page):
                 pass
         elif d['status'] == 'finished':
             progress.value = 1
-            set_status("Processing...", TEXT_SEC)
+            set_status("Download complete, processing...", TEXT_SEC)
+            log("Download finished, converting to constant framerate...")
+
+    # --- Post-Processor Hook ---
+    def postprocessor_hook(d):
+        """Track post-processing progress"""
+        if d['status'] == 'started':
+            postprocessor_name = d.get('postprocessor', 'Unknown')
+            log(f"Post-processing: {postprocessor_name}")
+            set_status("Converting to editor-compatible format...", TEXT_SEC)
+        elif d['status'] == 'processing':
+            info = d.get('info_dict', {})
+            filename = info.get('filepath', 'video')
+            if filename:
+                basename = os.path.basename(filename)
+                log(f"Re-encoding: {basename[:50]}...")
+                set_status("Re-encoding video (VFR → CFR)...", TEXT_SEC)
+        elif d['status'] == 'finished':
+            log("✓ Post-processing complete")
+            set_status("Video optimized for editing", GREEN)
 
     # --- Download Logic ---
-    def do_download(url, audio, quality, fmt, playlist, path):
+    def do_download(url, audio, quality, fmt, playlist, compat, path):
         state.is_cancelled = False
         state.downloading = True
         state.last_download_path = path
@@ -208,6 +230,7 @@ def main(page: ft.Page):
             opts = {
                 'ffmpeg_location': ffmpeg,
                 'progress_hooks': [progress_hook],
+                'postprocessor_hooks': [postprocessor_hook],
                 'outtmpl': '%(title)s.%(ext)s',
                 'format': fstr,
                 'noplaylist': not playlist,
@@ -220,6 +243,26 @@ def main(page: ft.Page):
                 opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': fmt.lower(), 'preferredquality': '192'}]
             else:
                 opts['merge_output_format'] = fmt.lower()
+                
+                # Conditionally add post-processing for compatibility mode
+                if compat:
+                    log("Compatibility mode enabled - converting to CFR")
+                    opts['postprocessors'] = [{
+                        'key': 'FFmpegVideoConvertor',
+                        'preferedformat': fmt.lower(),
+                    }]
+                    # Note: vsync cfr converts VFR->CFR while preserving original framerate
+                    opts['postprocessor_args'] = [
+                        '-c:v', 'libx264',           # H.264 codec
+                        '-preset', 'medium',          # Encoding speed/quality balance
+                        '-crf', '18',                 # High quality
+                        '-vsync', 'cfr',              # Convert to constant framerate
+                        '-c:a', 'aac',                # AAC audio codec
+                        '-b:a', '192k',               # Audio bitrate
+                        '-movflags', '+faststart'     # Enable streaming
+                    ]
+                else:
+                    log("Using original format (may contain variable framerate)")
 
             deno = os.path.join(os.getcwd(), 'src', 'bin', 'deno.exe')
             if os.path.exists(deno):
@@ -271,7 +314,6 @@ def main(page: ft.Page):
             dl_btn.text = "Download"
             dl_btn.icon = ft.Icons.DOWNLOAD
             dl_btn.bgcolor = ACCENT
-            url_input.disabled = False
             page.update()
 
     def start_download():
@@ -293,12 +335,11 @@ def main(page: ft.Page):
         dl_btn.text = "Cancel"
         dl_btn.icon = ft.Icons.CLOSE
         dl_btn.bgcolor = RED
-        url_input.disabled = True
         page.update()
         
         threading.Thread(
             target=do_download,
-            args=(url, audio_cb.value, quality_dd.value, format_dd.value, playlist_cb.value, folder_path.value),
+            args=(url, audio_cb.value, quality_dd.value, format_dd.value, playlist_cb.value, compat_cb.value, folder_path.value),
             daemon=True
         ).start()
 
@@ -331,6 +372,10 @@ def main(page: ft.Page):
             url_input.value = ""
             set_status(f"Added to queue ({len(state.queue)} pending)", ACCENT)
             page.update()
+            
+            # Auto-start queue if nothing is currently downloading
+            if not state.downloading:
+                start_download()
 
     def on_audio_change(e):
         if audio_cb.value:
@@ -537,6 +582,7 @@ def main(page: ft.Page):
     # --- Right Panel ---
     audio_cb = ft.Checkbox(label="Audio only", value=False, fill_color=ACCENT, on_change=on_audio_change)
     playlist_cb = ft.Checkbox(label="Download playlist", value=False, fill_color=ACCENT)
+    compat_cb = ft.Checkbox(label="Compatibility mode", value=True, fill_color=ACCENT, tooltip="Convert to constant framerate (CFR) for video editors")
 
     quality_dd = ft.Dropdown(
         label="Quality",
@@ -602,6 +648,8 @@ def main(page: ft.Page):
             audio_cb,
             ft.Container(height=8),
             playlist_cb,
+            ft.Container(height=8),
+            compat_cb,
             ft.Container(height=20),
             quality_dd,
             ft.Container(height=12),
