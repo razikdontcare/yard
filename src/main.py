@@ -834,10 +834,14 @@ def main(page: ft.Page):
     
     def check_for_updates():
         """Check GitHub for new version"""
+        log("Checking for updates...")
         try:
             import urllib.request
             import urllib.error
             from packaging import version
+            
+            latest_version = None
+            download_url = None
             
             # Check cache (don't check more than once per day)
             if os.path.exists(UPDATE_CHECK_FILE):
@@ -846,53 +850,69 @@ def main(page: ft.Page):
                         cache = json.load(f)
                         import time
                         if time.time() - cache.get('last_check', 0) < 86400:  # 24 hours
-                            return  # Skip check
+                            log("Update check skipped (cached)")
+                            latest_version = cache.get('latest')
+                            download_url = f"https://github.com/razikdontcare/yard/releases/tag/v{latest_version}"
+                            # Still check if update available from cache
+                        else:
+                            # Cache expired, will fetch fresh
+                            pass
                 except:
                     pass
             
-            # Query GitHub API
-            url = "https://api.github.com/repos/razikdontcare/yard/releases/latest"
-            req = urllib.request.Request(url)
-            req.add_header('User-Agent', 'Yard-UpdateChecker')
+            # Only fetch from API if not cached
+            if latest_version is None:
+                log("Querying GitHub API...")
+                # Query GitHub API
+                url = "https://api.github.com/repos/razikdontcare/yard/releases/latest"
+                req = urllib.request.Request(url)
+                req.add_header('User-Agent', 'Yard-UpdateChecker')
+                
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    data = json.loads(response.read())
+                    latest_version = data['tag_name'].lstrip('v')
+                    download_url = data['html_url']
+                    
+                    # Save cache
+                    import time
+                    with open(UPDATE_CHECK_FILE, 'w') as f:
+                        json.dump({'last_check': time.time(), 'latest': latest_version}, f)
             
-            with urllib.request.urlopen(req, timeout=5) as response:
-                data = json.loads(response.read())
-                latest_version = data['tag_name'].lstrip('v')
-                download_url = data['html_url']
+            log(f"Current version: {APP_VERSION}")
+            log(f"Latest version: {latest_version}")
+            
+            # Compare versions
+            if version.parse(latest_version) > version.parse(APP_VERSION):
+                log(f"✨ Update available: v{latest_version}")
                 
-                # Save cache
-                import time
-                with open(UPDATE_CHECK_FILE, 'w') as f:
-                    json.dump({'last_check': time.time(), 'latest': latest_version}, f)
+                # Show update notification banner
+                def open_release_page(e):
+                    import webbrowser
+                    webbrowser.open(download_url)
                 
-                # Compare versions
-                if version.parse(latest_version) > version.parse(APP_VERSION):
-                    # Show update notification banner
-                    def open_release_page(e):
-                        import webbrowser
-                        webbrowser.open(download_url)
-                    
-                    update_banner = ft.Container(
-                        content=ft.Row([
-                            ft.Icon(ft.Icons.UPDATE, color=ACCENT, size=20),
-                            ft.Text(f"New version {latest_version} available!", size=13, color=TEXT, weight=ft.FontWeight.W_500),
-                            ft.TextButton(
-                                "Download Update",
-                                on_click=open_release_page,
-                                style=ft.ButtonStyle(color=ACCENT)
-                            ),
-                        ], spacing=12, alignment=ft.MainAxisAlignment.CENTER),
-                        bgcolor=BG_SUBTLE,
-                        padding=8,
-                        border=ft.border.only(bottom=ft.border.BorderSide(1, BORDER)),
-                    )
-                    
-                    page.controls.insert(0, update_banner)
-                    page.update()
-                    log(f"✨ Update available: v{latest_version}")
+                update_banner = ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.UPDATE, color=ACCENT, size=20),
+                        ft.Text(f"New version {latest_version} available!", size=13, color=TEXT, weight=ft.FontWeight.W_500),
+                        ft.TextButton(
+                            "Download Update",
+                            on_click=open_release_page,
+                            style=ft.ButtonStyle(color=ACCENT)
+                        ),
+                    ], spacing=12, alignment=ft.MainAxisAlignment.CENTER),
+                    bgcolor=BG_SUBTLE,
+                    padding=8,
+                    border=ft.border.only(bottom=ft.border.BorderSide(1, BORDER)),
+                )
+                
+                page.controls.insert(0, update_banner)
+                page.update()
+            else:
+                log("You're using the latest version")
+        except urllib.error.URLError as e:
+            log(f"Update check failed: Network error")
         except Exception as e:
-            # Silently fail - don't bother user with update check errors
-            pass
+            log(f"Update check failed: {str(e)}")
     
     # Run update check in background
     threading.Thread(target=check_for_updates, daemon=True).start()
