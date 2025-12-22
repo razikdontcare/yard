@@ -78,9 +78,23 @@ jobs:
             exit 1
           }
 
-      - name: Upload build artifact
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup -y
+
+      - name: Create installer
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (Test-Path $iscc) {
+            & $iscc installer.iss
+          } else {
+            Write-Error "Inno Setup not found at $iscc"
+            exit 1
+          }
+
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: yard-windows-build-${{ github.sha }}
-          path: build/flutter/build/windows/x64/runner/Release/
+          name: yard-windows-installer-ci
+          path: installer/yard-setup-*.exe
           retention-days: 7
