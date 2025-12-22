@@ -1,6 +1,6 @@
 [project]
 name = "yard"
-version = "1.0.3"
+version = "1.0.4"
 description = ""
 readme = "README.md"
 requires-python = ">=3.9"
@@ -33,6 +33,7 @@ copyright = "Copyright (C) 2025 by Razik"
 
 [tool.flet.app]
 path = "src"
+assets_dir = "assets"
 
 [tool.uv]
 dev-dependencies = [
