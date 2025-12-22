@@ -6,6 +6,13 @@ import threading
 import json
 import subprocess
 import glob
+import urllib.request
+import urllib.error
+import webbrowser
+import time
+import shutil
+import psutil
+from packaging import version
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), '.yard_settings.json')
 APP_VERSION = "1.0.3"
@@ -360,7 +367,6 @@ def main(page: ft.Page):
             
             # DISK SPACE VALIDATION
             try:
-                import shutil
                 filesize = info.get('filesize') or info.get('filesize_approx', 0)
                 if filesize:
                     filesize_gb = filesize / (1024**3)
@@ -848,7 +854,6 @@ def main(page: ft.Page):
                 try:
                     with open(UPDATE_CHECK_FILE, 'r') as f:
                         cache = json.load(f)
-                        import time
                         if time.time() - cache.get('last_check', 0) < 86400:  # 24 hours
                             log("Update check skipped (cached)")
                             latest_version = cache.get('latest')
@@ -874,7 +879,6 @@ def main(page: ft.Page):
                     download_url = data['html_url']
                     
                     # Save cache
-                    import time
                     with open(UPDATE_CHECK_FILE, 'w') as f:
                         json.dump({'last_check': time.time(), 'latest': latest_version}, f)
             
@@ -887,7 +891,6 @@ def main(page: ft.Page):
                 
                 # Show update notification banner
                 def open_release_page(e):
-                    import webbrowser
                     webbrowser.open(download_url)
                 
                 update_banner = ft.Container(
@@ -935,7 +938,6 @@ def main(page: ft.Page):
                         old_pid = int(f.read().strip())
                     
                     # Check if process is still running (Windows)
-                    import psutil
                     if psutil.pid_exists(old_pid):
                         log("⚠ Another instance of Yard is already running")
                         set_status("Warning: Multiple instances detected", YELLOW)

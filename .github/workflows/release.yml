@@ -46,7 +46,7 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          flet build windows -v
+          flet build windows -v --no-rich-output
 
       - name: Install Inno Setup
         run: |
