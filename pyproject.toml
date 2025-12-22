@@ -33,6 +33,7 @@ copyright = "Copyright (C) 2025 by Razik"
 
 [tool.flet.app]
 path = "src"
+assets_dir = "assets"
 
 [tool.uv]
 dev-dependencies = [

@@ -171,3 +171,4 @@ installer/
 
 # Deno runtime (downloaded during setup)
 src/bin/
+src/assets/deno.exe

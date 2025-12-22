@@ -312,7 +312,17 @@ def main(page: ft.Page):
                 else:
                     log("Using original format (may contain variable framerate)")
 
-            deno = os.path.join(os.getcwd(), 'src', 'bin', 'deno.exe')
+
+            # Deno path detection - works for both development and built app
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            # Try assets folder first (for built app)
+            deno = os.path.join(script_dir, 'assets', 'deno.exe')
+            
+            # Fallback to src/bin for development
+            if not os.path.exists(deno):
+                deno = os.path.join(script_dir, 'bin', 'deno.exe')
+            
             deno_config = {}
             if os.path.exists(deno):
                 subprocess.run([deno, '--version'], capture_output=True, check=False)
@@ -320,6 +330,7 @@ def main(page: ft.Page):
                 log("Deno JS runtime configured")
             else:
                 log(f"⚠ Deno not found at: {deno}")
+                log("  YouTube downloads may not work properly")
 
             log("Fetching video info...")
             set_status("Validating video...", TEXT_SEC)
@@ -770,9 +781,12 @@ def main(page: ft.Page):
         options=[ft.dropdown.Option("MP4"), ft.dropdown.Option("MKV"), ft.dropdown.Option("WEBM")],
     )
 
-    folder_path = ft.TextField(value=os.path.join(os.getcwd(), 'yard'), visible=False)
+    # Default save location: User's Downloads folder
+    default_folder = os.path.join(os.path.expanduser("~"), "Downloads", "yard")
+    
+    folder_path = ft.TextField(value=default_folder, visible=False)
     folder_display = ft.TextField(
-        value=os.path.join(os.getcwd(), 'yard'),
+        value=default_folder,
         label="Save to",
         read_only=True,
         bgcolor=BG_CONTROL,
@@ -806,9 +820,9 @@ def main(page: ft.Page):
             ft.Text("Settings", size=16, weight=ft.FontWeight.W_600, color=TEXT),
             ft.Container(height=20),
             audio_cb,
-            ft.Container(height=8),
+            ft.Container(height=2),
             playlist_cb,
-            ft.Container(height=8),
+            ft.Container(height=2),
             compat_cb,
             ft.Container(height=20),
             quality_dd,
@@ -1002,4 +1016,4 @@ def main(page: ft.Page):
         pass
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.app(target=main, assets_dir="assets")
