@@ -781,9 +781,12 @@ def main(page: ft.Page):
         options=[ft.dropdown.Option("MP4"), ft.dropdown.Option("MKV"), ft.dropdown.Option("WEBM")],
     )
 
-    folder_path = ft.TextField(value=os.path.join(os.getcwd(), 'yard'), visible=False)
+    # Default save location: User's Downloads folder
+    default_folder = os.path.join(os.path.expanduser("~"), "Downloads", "yard")
+    
+    folder_path = ft.TextField(value=default_folder, visible=False)
     folder_display = ft.TextField(
-        value=os.path.join(os.getcwd(), 'yard'),
+        value=default_folder,
         label="Save to",
         read_only=True,
         bgcolor=BG_CONTROL,
