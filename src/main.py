@@ -15,7 +15,7 @@ import psutil
 from packaging import version
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), '.yard_settings.json')
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.3"
 
 def main(page: ft.Page):
     page.title = "Yard"
