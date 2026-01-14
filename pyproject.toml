@@ -1,6 +1,6 @@
 [project]
 name = "yard"
-version = "1.1.0"
+version = "1.1.1"
 description = "Yet Another yt-dlp - A modern video/audio downloader with queue management"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -44,4 +44,4 @@ dev-dependencies = [
 package-mode = false
 
 [tool.poetry.group.dev.dependencies]
-flet = {extras = ["all"], version = "1.1.0"}
+flet = {extras = ["all"], version = "1.1.1"}

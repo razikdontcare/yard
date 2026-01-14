@@ -268,13 +268,30 @@ def main(page: ft.Page):
     
     def apply_item_settings(settings):
         """Apply settings from queue item."""
-        audio_cb.value = settings.get('audio', False)
+        is_audio = settings.get('audio', False)
+        audio_cb.value = is_audio
         quality_dd.value = settings.get('quality', 'Best')
-        format_dd.value = settings.get('format', 'MP4' if not settings.get('audio') else 'MP3')
+        
+        # Validate and set format based on audio mode
+        saved_format = settings.get('format', 'MP4' if not is_audio else 'MP3')
+        if is_audio:
+            # Audio mode - validate audio formats
+            if saved_format in ["MP3", "M4A", "WAV"]:
+                format_dd.value = saved_format
+            else:
+                format_dd.value = "MP3"
+        else:
+            # Video mode - validate video formats
+            if saved_format in ["MP4", "MKV", "WEBM"]:
+                format_dd.value = saved_format
+            else:
+                format_dd.value = "MP4"
+        
         playlist_cb.value = settings.get('playlist', False)
         compat_cb.value = settings.get('compat', True)
         if settings.get('folder'):
             folder_path.value = settings['folder']
+
     
     def start_download():
         """Start download process."""
@@ -363,20 +380,32 @@ def main(page: ft.Page):
     def on_audio_change():
         """Handle audio checkbox change."""
         if audio_cb.value:
+            # Switching to audio mode
             format_dd.options = [
                 ft.dropdown.Option("MP3"),
                 ft.dropdown.Option("M4A"),
                 ft.dropdown.Option("WAV")
             ]
-            format_dd.value = "MP3"
+            # Validate current format, default to MP3 if invalid
+            current_format = format_dd.value
+            if current_format not in ["MP3", "M4A", "WAV"]:
+                format_dd.value = "MP3"
+            else:
+                format_dd.value = current_format
             quality_dd.disabled = True
         else:
+            # Switching to video mode
             format_dd.options = [
                 ft.dropdown.Option("MP4"),
                 ft.dropdown.Option("MKV"),
                 ft.dropdown.Option("WEBM")
             ]
-            format_dd.value = "MP4"
+            # Validate current format, default to MP4 if invalid
+            current_format = format_dd.value
+            if current_format not in ["MP4", "MKV", "WEBM"]:
+                format_dd.value = "MP4"
+            else:
+                format_dd.value = current_format
             quality_dd.disabled = False
         page.update()
     
@@ -427,10 +456,26 @@ def main(page: ft.Page):
                 ft.dropdown.Option("M4A"),
                 ft.dropdown.Option("WAV")
             ]
-            format_dd.value = settings.get('format', 'MP3')
+            # Validate format for audio mode
+            saved_format = settings.get('format', 'MP3')
+            if saved_format in ["MP3", "M4A", "WAV"]:
+                format_dd.value = saved_format
+            else:
+                format_dd.value = "MP3"
             quality_dd.disabled = True
         else:
-            format_dd.value = settings.get('format', 'MP4')
+            # Video mode
+            format_dd.options = [
+                ft.dropdown.Option("MP4"),
+                ft.dropdown.Option("MKV"),
+                ft.dropdown.Option("WEBM")
+            ]
+            # Validate format for video mode
+            saved_format = settings.get('format', 'MP4')
+            if saved_format in ["MP4", "MKV", "WEBM"]:
+                format_dd.value = saved_format
+            else:
+                format_dd.value = "MP4"
         
         if settings.get('playlist'):
             playlist_cb.value = True

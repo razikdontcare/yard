@@ -146,8 +146,16 @@ class Downloader:
             elif quality == "Best":
                 fstr = 'bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
             else:
-                h = quality.replace('p', '')
-                fstr = f'bestvideo[height<={h}]+bestaudio[ext=m4a]/bestvideo[height<={h}]+bestaudio/best[height<={h}]'
+                # Safely parse quality (e.g., "1080p" -> "1080")
+                try:
+                    h = quality.rstrip('p')  # Remove 'p' suffix safely
+                    if not h.isdigit():
+                        raise ValueError(f"Invalid quality format: {quality}")
+                    fstr = f'bestvideo[height<={h}]+bestaudio[ext=m4a]/bestvideo[height<={h}]+bestaudio/best[height<={h}]'
+                except (ValueError, AttributeError):
+                    self.log(f"⚠ Invalid quality '{quality}', using Best")
+                    fstr = 'bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
+
             
             # Build yt-dlp options
             opts = {
@@ -174,22 +182,60 @@ class Downloader:
                 opts['merge_output_format'] = fmt.lower()
                 
                 if compat:
-                    self.log("Compatibility mode enabled - converting to CFR")
-                    opts['postprocessors'] = [{
-                        'key': 'FFmpegVideoConvertor',
-                        'preferedformat': fmt.lower(),
-                    }]
-                    opts['postprocessor_args'] = [
-                        '-c:v', 'libx264',
-                        '-preset', 'veryfast',
-                        '-crf', '23',
-                        '-vsync', 'cfr',
-                        '-c:a', 'aac',
-                        '-b:a', '192k',
-                        '-movflags', '+faststart'
-                    ]
+                    # Format-specific codec selection for compatibility mode
+                    fmt_lower = fmt.lower()
+                    
+                    if fmt_lower == 'mp4':
+                        # MP4: Use H.264 + AAC (maximum compatibility)
+                        self.log("Compatibility mode: H.264/AAC for MP4")
+                        opts['postprocessors'] = [{
+                            'key': 'FFmpegVideoConvertor',
+                            'preferredformat': 'mp4',
+                        }]
+                        opts['postprocessor_args'] = [
+                            '-c:v', 'libx264',
+                            '-preset', 'veryfast',
+                            '-crf', '23',
+                            '-vsync', 'cfr',
+                            '-c:a', 'aac',
+                            '-b:a', '192k',
+                            '-movflags', '+faststart'
+                        ]
+                    
+                    elif fmt_lower == 'webm':
+                        # WEBM: Use VP9 + Opus (standard for WebM)
+                        self.log("Compatibility mode: VP9/Opus for WebM")
+                        opts['postprocessors'] = [{
+                            'key': 'FFmpegVideoConvertor',
+                            'preferredformat': 'webm',
+                        }]
+                        opts['postprocessor_args'] = [
+                            '-c:v', 'libvpx-vp9',
+                            '-crf', '30',
+                            '-b:v', '0',
+                            '-vsync', 'cfr',
+                            '-c:a', 'libopus',
+                            '-b:a', '128k'
+                        ]
+                    
+                    elif fmt_lower == 'mkv':
+                        # MKV: Use H.264 + AAC (widely compatible, MKV supports everything)
+                        self.log("Compatibility mode: H.264/AAC for MKV")
+                        opts['postprocessors'] = [{
+                            'key': 'FFmpegVideoConvertor',
+                            'preferredformat': 'mkv',
+                        }]
+                        opts['postprocessor_args'] = [
+                            '-c:v', 'libx264',
+                            '-preset', 'veryfast',
+                            '-crf', '23',
+                            '-vsync', 'cfr',
+                            '-c:a', 'aac',
+                            '-b:a', '192k'
+                        ]
                 else:
                     self.log("Using original format (may contain variable framerate)")
+
             
             # Configure Deno runtime
             deno_config = self._configure_deno()
@@ -200,6 +246,12 @@ class Downloader:
                     # Parse custom arguments (simple key=value or --flag format)
                     custom_opts = self._parse_custom_args(custom_args)
                     if custom_opts:
+                        # Protect critical settings from being overridden
+                        protected_keys = {'ffmpeg_location', 'paths', 'progress_hooks', 
+                                         'postprocessor_hooks', 'outtmpl'}
+                        for key in protected_keys:
+                            custom_opts.pop(key, None)
+                        
                         opts.update(custom_opts)
                         self.log(f"Applied custom arguments: {custom_args}")
                 except Exception as e:
@@ -223,6 +275,15 @@ class Downloader:
             if info.get('is_live'):
                 self.log("⚠ WARNING: This is a LIVE stream!")
                 self.log("  Download will continue until you cancel it.")
+            
+            # Playlist + Compat mode warning
+            if playlist and compat:
+                entry_count = info.get('playlist_count', 0) or len(info.get('entries', []))
+                if entry_count > 1:
+                    self.log(f"⚠ WARNING: Playlist with {entry_count} videos + Compat mode")
+                    self.log("  Each video will be re-encoded (slow process)")
+                    self.log("  Tip: Disable compat mode for faster playlist downloads")
+
             
             # Long video warning
             duration = info.get('duration', 0)

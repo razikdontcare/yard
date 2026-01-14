@@ -3,7 +3,7 @@
 import os
 
 # Application metadata
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 
 # File paths
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
